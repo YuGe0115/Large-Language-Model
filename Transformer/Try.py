@@ -304,3 +304,107 @@ class Transformer(nn.Module):
         # 编码
         encoder_output = self.encode(src, src_mask)
         
+        # 解码
+        decoder_output = self.decode(tgt, encoder_output, src_mask, tgt_mask)
+        
+        # 输出投影
+        output = self.output_projection(decoder_output)
+        
+        return output
+
+# ==================== 训练和推理示例 ====================
+def create_sample_data(config):
+    """创建示例数据"""
+    # 模拟输入序列
+    src = torch.randint(1, config.vocab_size, (config.batch_size, 20))  # 源序列
+    tgt = torch.randint(1, config.vocab_size, (config.batch_size, 15))  # 目标序列
+    
+    # 添加开始和结束标记
+    src[:, 0] = 1  # 开始标记
+    src[:, -1] = 2  # 结束标记
+    tgt[:, 0] = 1
+    tgt[:, -1] = 2
+    
+    return src, tgt
+
+def train_example():
+    """训练示例"""
+    print("=== Transformer训练示例 ===")
+    
+    # 创建模型
+    model = Transformer(config)
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.learning_rate)
+    criterion = nn.CrossEntropyLoss(ignore_index=0)  # 忽略填充标记
+    
+    # 创建示例数据
+    src, tgt = create_sample_data(config)
+    
+    print(f"源序列形状: {src.shape}")
+    print(f"目标序列形状: {tgt.shape}")
+    
+    # 前向传播
+    model.train()
+    output = model(src, tgt[:, :-1])  # 解码器输入不包含最后一个token
+    
+    print(f"模型输出形状: {output.shape}")
+    
+    # 计算损失
+    loss = criterion(output.reshape(-1, config.vocab_size), tgt[:, 1:].reshape(-1))
+    print(f"损失值: {loss.item():.4f}")
+    
+    # 反向传播
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    
+    print("训练步骤完成！")
+
+def inference_example():
+    """推理示例"""
+    print("\n=== Transformer推理示例 ===")
+    
+    model = Transformer(config)
+    model.eval()
+    
+    # 创建示例输入
+    src = torch.randint(1, 100, (1, 10))  # 单个样本
+    src[0, 0] = 1  # 开始标记
+    src[0, -1] = 2  # 结束标记
+    
+    print(f"输入序列: {src}")
+    
+    # 简单的贪心解码
+    with torch.no_grad():
+        # 编码
+        src_mask = model.create_padding_mask(src)
+        encoder_output = model.encode(src, src_mask)
+        
+        # 逐步解码
+        tgt = torch.tensor([[1]], dtype=torch.long)  # 开始标记
+        
+        for _ in range(20):  # 最大生成长度
+            tgt_mask = model.create_padding_mask(tgt)
+            tgt_look_ahead_mask = model.create_look_ahead_mask(tgt.size(1))
+            tgt_mask = tgt_mask & tgt_look_ahead_mask.to(tgt.device)
+            
+            decoder_output = model.decode(tgt, encoder_output, src_mask, tgt_mask)
+            output = model.output_projection(decoder_output)
+            
+            # 选择概率最高的词
+            next_token = output[:, -1, :].argmax(dim=-1, keepdim=True)
+            tgt = torch.cat([tgt, next_token], dim=1)
+            
+            # 如果生成了结束标记，停止
+            if next_token.item() == 2:
+                break
+        
+        print(f"生成序列: {tgt}")
+
+# ==================== 主函数 ====================
+if __name__ == "__main__":
+    
+    # 运行示例
+    train_example()
+    inference_example()
+    
+    print("框架搭建完成")
